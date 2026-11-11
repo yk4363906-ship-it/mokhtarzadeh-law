@@ -1,66 +1,5 @@
  
-document.addEventListener("DOMContentLoaded", function () {
-  const header = document.getElementById("siteHeader");
-  const menuToggle = document.getElementById("menuToggle");
-  const mainNav = document.getElementById("mainNav");
-
-  // اتصال به Supabase
-  const SUPABASE_URL = "https://ecwrkmjxlkoxpbarxnev.supabase.co";
-  const SUPABASE_KEY = "sb_publishable_PllZ5xkb7ez_ihE0_mVtAA_ydyXKZ7y";
-
-  const commentForm = document.getElementById("commentForm");
-  const commentName = document.getElementById("commentName");
-  const commentEmail = document.getElementById("commentEmail");
-  const commentText = document.getElementById("commentText");
-  const commentMessage = document.getElementById("commentMessage");
-  const commentList = document.getElementById("commentList");
-
-  // کوچک شدن هدر هنگام اسکرول
-  function updateHeader() {
-    if (header) {
-      header.classList.toggle("scrolled", window.scrollY > 35);
-    }
-  }
-
-  updateHeader();
-  window.addEventListener("scroll", updateHeader, { passive: true });
-
-  // منوی موبایل
-  if (menuToggle && mainNav) {
-    menuToggle.addEventListener("click", function () {
-      const opened = mainNav.classList.toggle("open");
-
-      menuToggle.setAttribute("aria-expanded", String(opened));
-      menuToggle.textContent = opened ? "×" : "☰";
-      menuToggle.setAttribute(
-        "aria-label",
-        opened ? "بستن منو" : "باز کردن منو"
-      );
-    });
-
-    mainNav.querySelectorAll("a").forEach(function (link) {
-      link.addEventListener("click", function () {
-        mainNav.classList.remove("open");
-        menuToggle.setAttribute("aria-expanded", "false");
-        menuToggle.textContent = "☰";
-        menuToggle.setAttribute("aria-label", "باز کردن منو");
-      });
-    });
-
-    document.addEventListener("click", function (event) {
-      if (
-        !mainNav.contains(event.target) &&
-        !menuToggle.contains(event.target)
-      ) {
-        mainNav.classList.remove("open");
-        menuToggle.setAttribute("aria-expanded", "false");
-        menuToggle.textContent = "☰";
-        menuToggle.setAttribute("aria-label", "باز کردن منو");
-      }
-    });
-  }
-
-  // جست‌وجو در محتوای سایت
+  // جست‌وجو و نمایش نتایج زیر کادر جست‌وجو
   const searchForm = document.getElementById("siteSearchForm");
   const searchInput = document.getElementById("siteSearch");
   const searchMessage = document.getElementById("searchMessage");
@@ -71,232 +10,169 @@ document.addEventListener("DOMContentLoaded", function () {
       .replace(/[يى]/g, "ی")
       .replace(/ك/g, "ک")
       .replace(/[\u064B-\u065F\u0670]/g, "")
+      .replace(/\u200c/g, " ")
       .replace(/\s+/g, " ")
       .trim();
   }
 
-  function clearHighlights() {
-    document.querySelectorAll(".search-hit").forEach(function (section) {
-      section.classList.remove("search-hit");
-    });
-  }
+  // ساخت محل نمایش نتایج زیر جست‌وجو
+  let searchResults = document.getElementById("searchResults");
 
-  if (searchForm && searchInput && searchMessage) {
-    searchForm.addEventListener("submit", function (event) {
-      event.preventDefault();
-      clearHighlights();
+  if (!searchResults && searchForm) {
+    searchResults = document.createElement("div");
+    searchResults.id = "searchResults";
+    searchResults.style.cssText = `
+      width: 100%;
+      margin-top: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    `;
 
-      const query = normalizeText(searchInput.value);
-
-      if (!query) {
-        searchMessage.textContent = "عبارت موردنظر را وارد کنید.";
-        return;
-      }
-
-      const sections = Array.from(
-        document.querySelectorAll("main section[id]")
-      ).filter(function (section) {
-        return section.id !== "search-section";
-      });
-
-      const matches = sections.filter(function (section) {
-        return normalizeText(section.innerText).includes(query);
-      });
-
-      if (matches.length > 0) {
-        matches.forEach(function (section) {
-          section.classList.add("search-hit");
-        });
-
-        searchMessage.textContent =
-          "عبارت در " + matches.length +
-          " بخش پیدا شد. بخش‌های مشخص‌شده را ببینید.";
-
-        matches[0].scrollIntoView({
-          behavior: "smooth",
-          block: "start"
-        });
-      } else {
-        searchMessage.textContent =
-          "چیزی پیدا نشد؛ عبارت دیگری مثل سوابق، قرارداد یا تماس را امتحان کنید.";
-      }
-    });
-
-    searchInput.addEventListener("input", function () {
-      if (!searchInput.value.trim()) {
-        clearHighlights();
-        searchMessage.textContent = "";
-      }
-    });
-  }
-
-  // پیام‌های بخش دیدگاه‌ها
-  function setCommentMessage(message, isError) {
-    if (!commentMessage) return;
-
-    commentMessage.textContent = message;
-    commentMessage.classList.toggle("error", Boolean(isError));
-  }
-
-  // ساخت درخواست امن به Supabase
-  function supabaseHeaders(extraHeaders) {
-    return Object.assign(
-      {
-        "apikey": SUPABASE_KEY,
-        "Authorization": "Bearer " + SUPABASE_KEY
-      },
-      extraHeaders || {}
-    );
-  }
-
-  // دریافت دیدگاه‌ها
-  async function loadComments() {
-    if (!commentList) return;
-
-    commentList.textContent = "در حال دریافت دیدگاه‌ها...";
-
-    try {
-      const response = await fetch(
-        SUPABASE_URL +
-        "/rest/v1/comments?select=id,name,comment,created_at&order=created_at.desc",
-        {
-          method: "GET",
-          headers: supabaseHeaders()
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(await response.text());
-      }
-
-      const comments = await response.json();
-      renderComments(comments);
-
-    } catch (error) {
-      console.error("خطا در دریافت دیدگاه‌ها:", error);
-      commentList.textContent =
-        "نمایش دیدگاه‌ها در حال حاضر امکان‌پذیر نیست.";
+    if (searchMessage) {
+      searchMessage.insertAdjacentElement("afterend", searchResults);
+    } else {
+      searchForm.insertAdjacentElement("afterend", searchResults);
     }
   }
 
-  // نمایش امن دیدگاه‌ها
-  function renderComments(comments) {
-    if (!commentList) return;
+  // ظاهر نتایج
+  if (!document.getElementById("search-results-style")) {
+    const style = document.createElement("style");
+    style.id = "search-results-style";
+    style.textContent = `
+      #searchResults .search-result-item {
+        display: block;
+        width: 100%;
+        padding: 14px;
+        border: 1px solid #d8c39a;
+        border-radius: 10px;
+        background: #fff;
+        color: #202b3c;
+        text-align: right;
+        cursor: pointer;
+        transition: background 0.2s, border-color 0.2s;
+        font-family: inherit;
+        line-height: 1.9;
+      }
 
-    commentList.replaceChildren();
+      #searchResults .search-result-item:hover {
+        background: #f8f2e8;
+        border-color: #b18a45;
+      }
 
-    if (!Array.isArray(comments) || comments.length === 0) {
-      commentList.textContent = "هنوز دیدگاهی ثبت نشده است.";
+      #searchResults .search-result-title {
+        display: block;
+        font-weight: bold;
+        color: #a47c37;
+        margin-bottom: 5px;
+      }
+
+      #searchResults .search-result-text {
+        display: block;
+        font-size: 13px;
+        color: #555;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function performSearch() {
+    if (!searchInput || !searchResults) return;
+
+    const query = normalizeText(searchInput.value);
+
+    searchResults.replaceChildren();
+
+    if (searchMessage) {
+      searchMessage.textContent = "";
+    }
+
+    if (!query) return;
+
+    const sections = Array.from(
+      document.querySelectorAll("main section[id]")
+    ).filter(function (section) {
+      return section.id !== "search-section";
+    });
+
+    const matches = sections.filter(function (section) {
+      return normalizeText(section.innerText).includes(query);
+    });
+
+    if (matches.length === 0) {
+      if (searchMessage) {
+        searchMessage.textContent = "مطلبی با این عبارت پیدا نشد.";
+      }
       return;
     }
 
-    comments.forEach(function (item) {
-      const article = document.createElement("article");
-      article.className = "comment-item";
+    matches.forEach(function (section) {
+      const heading = section.querySelector("h1, h2, h3, h4");
 
-      const heading = document.createElement("div");
-      heading.className = "comment-heading";
+      const title = heading
+        ? heading.innerText.trim()
+        : "مطالب سایت";
 
-      const name = document.createElement("strong");
-      name.textContent = item.name || "بازدیدکننده";
-
-      const date = document.createElement("time");
-
-      if (item.created_at) {
-        const parsedDate = new Date(item.created_at);
-
-        if (!Number.isNaN(parsedDate.getTime())) {
-          date.dateTime = parsedDate.toISOString();
-          date.textContent = parsedDate.toLocaleDateString("fa-IR");
-        }
-      }
-
-      const text = document.createElement("p");
-      text.textContent = item.comment || "";
-
-      heading.append(name, date);
-      article.append(heading, text);
-      commentList.appendChild(article);
-    });
-  }
-
-  // بارگذاری دیدگاه‌های قبلی
-  loadComments();
-
-  // ثبت دیدگاه جدید
-  if (commentForm) {
-    commentForm.addEventListener("submit", async function (event) {
-      event.preventDefault();
-
-      const name = commentName ? commentName.value.trim() : "";
-      const email = commentEmail ? commentEmail.value.trim() : "";
-      const comment = commentText ? commentText.value.trim() : "";
-
-      if (!name || !email || !comment) {
-        setCommentMessage(
-          "لطفاً نام و نام خانوادگی، ایمیل و متن دیدگاه را وارد کنید.",
-          true
-        );
-        return;
-      }
-
-      if (!commentEmail.checkValidity()) {
-        setCommentMessage("لطفاً یک ایمیل معتبر وارد کنید.", true);
-        return;
-      }
-
-      const submitButton = commentForm.querySelector(
-        'button[type="submit"], input[type="submit"]'
+      // پیدا کردن پاراگراف مرتبط
+      const paragraphs = Array.from(
+        section.querySelectorAll("p, li, h3, h4")
       );
 
-      if (submitButton) {
-        submitButton.disabled = true;
-      }
+      const matchedParagraph = paragraphs.find(function (paragraph) {
+        return normalizeText(paragraph.innerText).includes(query);
+      });
 
-      setCommentMessage("در حال ثبت دیدگاه...", false);
+      const excerpt = matchedParagraph
+        ? matchedParagraph.innerText.trim()
+        : section.innerText.trim();
 
-      try {
-        const response = await fetch(
-          SUPABASE_URL + "/rest/v1/comments",
-          {
-            method: "POST",
-            headers: supabaseHeaders({
-              "Content-Type": "application/json",
-              "Prefer": "return=minimal"
-            }),
-            body: JSON.stringify({
-              name: name,
-              email: email,
-              comment: comment
-            })
-          }
-        );
+      const result = document.createElement("button");
+      result.type = "button";
+      result.className = "search-result-item";
 
-        if (!response.ok) {
-          throw new Error(await response.text());
+      const titleElement = document.createElement("span");
+      titleElement.className = "search-result-title";
+      titleElement.textContent = title;
+
+      const textElement = document.createElement("span");
+      textElement.className = "search-result-text";
+      textElement.textContent =
+        excerpt.length > 220
+          ? excerpt.substring(0, 220) + "..."
+          : excerpt;
+
+      result.append(titleElement, textElement);
+
+      // رفتن به بخش کامل مطلب با کلیک روی نتیجه
+      result.addEventListener("click", function () {
+        section.scrollIntoView({
+          behavior: "smooth",
+          block: "start"
+        });
+
+        // بستن منوی موبایل در صورت باز بودن
+        if (mainNav && menuToggle) {
+          mainNav.classList.remove("open");
+          menuToggle.setAttribute("aria-expanded", "false");
+          menuToggle.textContent = "☰";
         }
+      });
 
-        commentForm.reset();
-
-        setCommentMessage(
-          "دیدگاه شما با موفقیت ثبت شد. سپاس از همراهی شما.",
-          false
-        );
-
-        await loadComments();
-
-      } catch (error) {
-        console.error("خطا در ثبت دیدگاه:", error);
-
-        setCommentMessage(
-          "ثبت دیدگاه انجام نشد. تنظیمات دیتابیس و اتصال اینترنت را بررسی کنید.",
-          true
-        );
-      } finally {
-        if (submitButton) {
-          submitButton.disabled = false;
-        }
-      }
+      searchResults.appendChild(result);
     });
+
+    if (searchMessage) {
+      searchMessage.textContent =
+        matches.length + " بخش مرتبط پیدا شد. برای خواندن مطلب کامل کلیک کنید.";
+    }
   }
-});
+
+  if (searchForm && searchInput) {
+    searchForm.addEventListener("submit", function (event) {
+      event.preventDefault();
+      performSearch();
+    });
+
+    searchInput.addEventListener("input", performSearch);
+  }
